@@ -33,7 +33,7 @@ interface POP3CommandResult {
 	data: string;
 }
 
-const POP3_TIMEOUT = 30000;
+let POP3_TIMEOUT = 30000;
 
 enum POP3ConnectionState {
 	DISCONNECTED = 0,
@@ -41,14 +41,14 @@ enum POP3ConnectionState {
 	AUTHENTICATED = 2
 }
 
-async function pop3_timeout_promise<T>(promise: Promise<T>, ms: number): Promise<T> {
+async function pop3_timeout_promise<T>(promise: Promise<T>): Promise<T> {
 	let timer: NodeJS.Timeout|null = null;
 
 	try {
 		return await Promise.race([
 			promise,
 			new Promise<T>((_resolve, reject) => {
-				timer = setTimeout(() => reject(new Error('Operation timed out')), ms);
+				timer = setTimeout(() => reject(new Error('Operation timed out')), POP3_TIMEOUT);
 			})
 		]);
 	} finally {
@@ -143,8 +143,12 @@ function pop3_assert_state(client: POP3Client, state: POP3ConnectionState) {
 		throw new ErrorWithMetadata('pop3 invalid state', { expected: state, actual: client.state });
 }
 
+export function pop3_set_timeout(timeout: number) {
+	POP3_TIMEOUT = timeout;
+}
+
 export async function pop3_connect(host: string, port: number): Promise<POP3Client> {
-	const socket = await pop3_timeout_promise(pop3_create_socket(host, port), POP3_TIMEOUT);
+	const socket = await pop3_timeout_promise(pop3_create_socket(host, port));
 	const client = {
 		socket,
 		state: POP3ConnectionState.DISCONNECTED,
@@ -168,7 +172,7 @@ export async function pop3_connect(host: string, port: number): Promise<POP3Clie
 		log('pop3', 'connection closed');
 	});
 	
-	const response = await pop3_timeout_promise(pop3_read_response(socket), POP3_TIMEOUT);
+	const response = await pop3_timeout_promise(pop3_read_response(socket));
 	if (!response.success)
 		throw new ErrorWithMetadata(`pop3 connection failed`, { response });
 	

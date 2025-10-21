@@ -36,6 +36,7 @@ pop3_get_message(client: POP3Client, msg_number: number): Promise<string>
 pop3_delete_message(client: POP3Client, msg_number: number): Promise<void>
 pop3_quit(client: POP3Client): Promise<boolean | void>
 pop3_iterator(client: POP3Client): AsyncGenerator<string>
+pop3_set_timeout(timeout: number): void;
 ```
 
 ```ts
