@@ -22,6 +22,7 @@ The intended way for this project to be used is much simpler: take the module yo
 ## Modules
 
 - [modules/pop3.ts](#pop3) - POP3 mailbox API.
+- [modules/obj_rds.ts](#obj-rds) - Rubber Duck Solutions CDN API.
 
 <a id="pop3"></a>
 ## Module :: POP3
@@ -55,6 +56,78 @@ try {
 } finally {
 	await pop3_quit(client);
 }
+```
+
+<a id="obj-rds"></a>
+## Module :: RDS Object Storage
+
+> [!IMPORTANT]
+> This API integrates with a third-party service. You will need to create an account with the provider, obtain authentication credentials, and may be subject to their pricing and terms of service.
+
+```ts
+set_hmac_algorithm(alg: string);
+bucket(bucket_id: string, bucket_secret: string): <ObjectBucket>;
+
+type UploadInput = BunFile | string | Buffer | ArrayBuffer | Uint8Array;
+
+type UploadOptions = {
+	chunk_size?: number;
+	retry_count?: number;
+	queue_size?: number;
+	content_type?: string;
+	filename?: string;
+};
+
+// standard API
+ObjectBucket.upload(input: UploadInput, options?: UploadOptions): Promise<ObjectID|null>;
+ObjectBucket.url(object_id: string): string;
+ObjectBucket.download(object_id: string): Promise<Response>;
+ObjectBucket.presign(object_id: string, expires?: number, action?: string): string;
+ObjectBucket.stat(object_id?: string): Promise<BucketStats | ObjectStats | null>;
+ObjectBucket.delete(object_id: string): Promise<boolean>;
+ObjectBucket.list(offset?: number, page_size?: number): Promise<ListResult | null>;
+
+// advanced
+ObjectBucket.action(action: string, params = {}): Promise<Response>;
+ObjectBucket.provision(filename: string, content_type: string, size: number): Promise<ObjectID|null>;
+ObjectBucket.finalize(object_id: string, checksum?: string): Promise<boolean>;
+```
+
+```ts
+import * as obj_rds from 'obj_rds.ts';
+
+const bucket = obj_rds.bucket('my_bucket', 'my_bucket_secret');
+
+// upload file
+const file = Bun.file('./duck_picture.jpg');
+const obj_id = await bucket.upload(file);
+// > 13a10c56-5a28-4a47-8ca0-7070fc1233ba
+
+// download file
+const res = await bucket.download(obj_id);
+if (res.ok)
+	Bun.write('./duck_copy.jpg', res);
+
+// public URL
+bucket.url(obj_id);
+
+// presigned URL (24 hours, access only)
+bucket.presign(obj_id);
+
+// get bucket statistics
+const stats = await bucket.stat();
+// > { size: 1048576, files: 42 }
+
+// get object metadata
+const metadata = await bucket.stat(obj_id);
+// > { filename: "duck_picture.jpg", size: 1024, content_type: "image/jpeg", created: 1234567890 }
+
+// delete object
+await bucket.delete(obj_id);
+
+// list objects (paginated)
+const list = await bucket.list(0, 50);
+// > { objects: [{ object_id: "...", filename: "...", size: X, content_type: "...", created: X }, ...] }
 ```
 
 ## Legal
