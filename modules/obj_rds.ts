@@ -48,7 +48,7 @@ type ListResult = {
 	}>;
 };
 
-async function checksum_file(file: BunFile): Promise<string> {
+async function checksum_file(file: Blob): Promise<string> {
 	const stream = file.stream();
 	const hasher = new Bun.CryptoHasher('sha256');
 
@@ -56,6 +56,10 @@ async function checksum_file(file: BunFile): Promise<string> {
 		hasher.update(chunk);
 
 	return hasher.digest('hex');
+}
+
+function is_bun_file(obj: any): obj is BunFile {
+	return obj.constructor === Blob;
 }
 
 /**
@@ -187,26 +191,18 @@ export function bucket(bucket_id: string, bucket_secret: string) {
 		},
 
 		upload: async function (input: UploadInput, options?: UploadOptions) {
-			let file: BunFile;
-			if (typeof input === 'string') {
-				const encoder = new TextEncoder();
-				const data = encoder.encode(input);
-				file = Bun.file(data, { type: options?.content_type ?? 'text/plain' });
-			} else if (Buffer.isBuffer(input)) {
-				file = Bun.file(input.buffer as ArrayBuffer, { type: options?.content_type ?? 'application/octet-stream' });
-			} else if (input instanceof ArrayBuffer) {
-				file = Bun.file(input, { type: options?.content_type ?? 'application/octet-stream' });
-			} else if (input instanceof Uint8Array) {
-				file = Bun.file(input.buffer as ArrayBuffer, { type: options?.content_type ?? 'application/octet-stream' });
-			} else {
+			let file: Blob;
+			if (is_bun_file(input)) {
 				file = input;
+			} else {
+				file = new Blob([input as any], {type: options?.content_type ?? 'application/octet-stream'});
 			}
 
 			// start checksum early so it can run concurrently with uploads
 			const checksum_promise = checksum_file(file);
 
 			// providing an empty string to the API will use the object_id as the filename.
-			const filename = file.name ? path.basename(file.name) : (options?.filename ?? '');
+			const filename = is_bun_file(file) && file.name ? path.basename(file.name) : (options?.filename ?? '');
 			const content_type = options?.content_type ?? file.type;
 			const object_id = await this.provision(filename, content_type, file.size);
 
@@ -236,7 +232,7 @@ export function bucket(bucket_id: string, bucket_secret: string) {
 				while (attempts < max_attempts) {
 					try {
 						const form_data = new FormData();
-						form_data.append('file', chunk);
+						form_data.append('file', chunk, 'chunk.bin');
 						form_data.append('offset', offset.toString());
 
 						const res = await fetch(upload_url, {
