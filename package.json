@@ -3,7 +3,9 @@
 	"author": "Kruithne <kruithne@gmail.com>",
 	"version": "1.0.0",
 	"exports": {
-		"./pop3": "./modules/pop3.ts"
+		"./pop3": "./modules/pop3.ts",
+		"./obj_rds": "./modules/obj_rds.ts",
+		"./smtp": "./modules/smtp.ts"
 	},
 	"dependencies": {
 		"@types/bun": "^1.3.0",
