@@ -23,6 +23,7 @@ The intended way for this project to be used is much simpler: take the module yo
 
 - [modules/pop3.ts](#pop3) - POP3 mailbox API.
 - [modules/obj_rds.ts](#obj-rds) - Rubber Duck Solutions CDN API.
+- [modules/smtp.ts](#smtp) - SMTP mailing API.
 
 <a id="pop3"></a>
 ## Module :: POP3
@@ -128,6 +129,71 @@ await bucket.delete(obj_id);
 // list objects (paginated)
 const list = await bucket.list(0, 50);
 // > { objects: [{ object_id: "...", filename: "...", size: X, content_type: "...", created: X }, ...] }
+```
+
+<a id="smtp"></a>
+## Module :: SMTP
+
+```ts
+smtp_send(config: SMTPSendConfig): Promise<SMTPResponse>
+smtp_create_mailer(uri: string): Mailer
+
+type SMTPMessage = {
+	from: string;
+	to: string;
+	cc?: string;
+	bcc?: string;
+	subject: string;
+	text?: string;
+	html?: string;
+};
+
+type SMTPSendConfig = {
+	uri: string;
+} & SMTPMessage;
+
+type SMTPResponse = {
+	accepted: string[];
+	rejected: string[];
+	response: string;
+	message_id: string;
+};
+
+type Mailer = {
+	send(message: SMTPMessage): Promise<SMTPResponse>;
+	close(): Promise<void>;
+};
+```
+
+```ts
+import { smtp_send, smtp_create_mailer } from 'smtp.ts';
+
+// one-off send
+const result = await smtp_send({
+	uri: 'user:pass@smtp.example.com:465',
+	from: 'Sender Name <sender@example.com>',
+	to: 'recipient@example.com',
+	subject: 'test message',
+	text: 'plain text body',
+	html: '<p>html body</p>'
+});
+// > { accepted: ['recipient@example.com'], rejected: [], response: '250 OK', message_id: '<...>' }
+
+// persistent mailer
+const mailer = smtp_create_mailer('user:pass@smtp.example.com:465');
+
+try {
+	await mailer.send({
+		from: 'Sender Name <sender@example.com>',
+		to: 'recipient@example.com',
+		cc: 'cc@example.com',
+		bcc: 'bcc@example.com',
+		subject: 'test message',
+		html: '<p>html body</p>'
+	});
+} finally {
+	await mailer.close();
+}
 ```
 
 ## Legal
