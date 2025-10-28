@@ -24,6 +24,7 @@ The intended way for this project to be used is much simpler: take the module yo
 - [modules/pop3.ts](#pop3) - POP3 mailbox API.
 - [modules/obj_rds.ts](#obj-rds) - Rubber Duck Solutions CDN API.
 - [modules/smtp.ts](#smtp) - SMTP mailing API.
+- [modules/mail.ts](#mail) - Mail utilities.
 
 <a id="pop3"></a>
 ## Module :: POP3
@@ -195,6 +196,40 @@ try {
 	await mailer.close();
 }
 ```
+
+<a id="mail"></a>
+## Module :: Mail
+
+```ts
+type MailTemplateOptions = {
+	base_html?: string;
+	base_text?: string;
+	html_template?: string;
+	text_template?: string;
+};
+
+mail_template(options: MailTemplateOptions);
+```
+
+```ts
+const template = await mail_template({
+	base_html: './mail/base_template.html',
+	base_text: './mail/base_template.txt',
+	html_template: './mail/account_verify.html',
+	text_template: './mail/account_verify.txt'
+});
+
+await smtp_send({
+	// uri, to, from, etc.
+	...template.parse({ code: 55535 })
+});
+```
+
+> [!NOTE]
+> `base_html` and `base_text` are optional for providing a standardized mail template (header, footer, etc). If provided, these should have a `{{ content }}` placeholder in them.
+
+> [!NOTE]
+> If `base_text` and `text_template` are omitted, the resulting `.text` will be an empty string. In contrast, if `base_html` and `html_template` are omitted, the resulting `.html` will match the output of `.text`.
 
 ## Legal
 This software is provided as-is with no warranty or guarantee. The authors of this project are not responsible or liable for any problems caused by using this software or any part thereof. Use of this software does not entitle you to any support or assistance from the authors of this project.
