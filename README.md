@@ -25,6 +25,7 @@ The intended way for this project to be used is much simpler: take the module yo
 - [modules/obj_rds.ts](#obj-rds) - Rubber Duck Solutions CDN API.
 - [modules/smtp.ts](#smtp) - SMTP mailing API.
 - [modules/mail.ts](#mail) - Mail utilities.
+- [modules/users.ts](#users) - User Management System
 
 <a id="pop3"></a>
 ## Module :: POP3
@@ -230,6 +231,42 @@ await smtp_send({
 
 > [!NOTE]
 > If `base_text` and `text_template` are omitted, the resulting `.text` will be an empty string. In contrast, if `base_html` and `html_template` are omitted, the resulting `.html` will match the output of `.text`.
+
+<a id="users"></a>
+## Module :: Users
+
+The `Users` module provides a basic user management system that features login, registration, sessions, account recovery, account verification and a permission system.
+
+While almost a drop-in module, `example.ts` and `schema.sql` have also been provided.
+
+> [!IMPORTANT]
+> An `SQL` instance has been hard-coded into the module which needs to be replaced with a proper import for your own database instance.
+
+```ts
+// session management
+revoke_user_session(req: Request): void
+start_user_session(req: Request, user_id: number): Promise<Response>
+refresh_user_sessions(...user_ids: number[]): Promise<void>
+refresh_user_session(session_id: string): Promise<void>
+end_user_session(session_id: string): Promise<void>
+get_session(session_id: string|null): Promise<UserSession|null>
+
+// account management
+get_user_presence(user_id: number): Promise<{ first_name: string, last_name: string }>
+verify_login(email: string, password: string): Promise<[VerifyLoginResponse, number|null]>
+email_in_use(email: string): Promise<boolean>
+register_account(email: string, password: string, first_name: string, last_name: string): Promise<boolean|string>
+has_permission_by_session(session: UserSession, permission: UserPermission): Promise<boolean>
+
+// verification
+get_user_verification_token(user_id: number): Promise<string|null>
+check_verification_code(token: string, code: string): Promise<boolean|number>
+send_verification_code(verify_token: string, force?: boolean): Promise<SendVerificationCodeResponse>
+
+// password reset
+reset_user_password(user_email_or_id: string|number): Promise<PasswordResetResponse>
+apply_password_reset(token: string, new_password: string): Promise<PasswordResetResponse>
+```
 
 ## Legal
 This software is provided as-is with no warranty or guarantee. The authors of this project are not responsible or liable for any problems caused by using this software or any part thereof. Use of this software does not entitle you to any support or assistance from the authors of this project.
