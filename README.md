@@ -26,6 +26,7 @@ The intended way for this project to be used is much simpler: take the module yo
 - [modules/smtp.ts](#smtp) - SMTP mailing API.
 - [modules/mail.ts](#mail) - Mail utilities.
 - [modules/users.ts](#users) - User Management System
+- [modules/paypal.ts](#paypal) - PayPal API for orders and subscriptions.
 
 <a id="pop3"></a>
 ## Module :: POP3
@@ -266,6 +267,233 @@ send_verification_code(verify_token: string, force?: boolean): Promise<SendVerif
 // password reset
 reset_user_password(user_email_or_id: string|number): Promise<PasswordResetResponse>
 apply_password_reset(token: string, new_password: string): Promise<PasswordResetResponse>
+```
+
+<a id="paypal"></a>
+## Module :: PayPal
+
+> [!IMPORTANT]
+> This API integrates with a third-party service. You will need to create an account with PayPal, obtain API credentials (Client ID and Secret), and may be subject to their pricing and terms of service.
+
+> [!IMPORTANT]
+> Configure the environment variables PAYPAL_CLIENT_ID and PAYPAL_SECRET.
+
+```ts
+// orders (v2 api)
+paypal_create_order(options: CreateOrderOptions): Promise<{order_id: string; approval_url: string} | null>
+paypal_capture_order(order_id: string): Promise<{success: boolean; transaction_id?: string; status?: string; details?: OrderResponse} | null>
+paypal_get_order(order_id: string): Promise<OrderResponse | null>
+paypal_refund_capture(capture_id: string, amount?: Money, note_to_payer?: string, invoice_id?: string, custom_id?: string): Promise<{success: boolean; refund_id?: string; status?: string; details?: RefundResponse} | null>
+
+// subscriptions (v1 api)
+paypal_create_subscription(request: CreateSubscriptionRequest): Promise<{subscription_id: string; approval_url: string; status: string} | null>
+paypal_get_subscription(subscription_id: string): Promise<SubscriptionDetails | null>
+paypal_update_subscription(subscription_id: string, patches: PatchRequest[]): Promise<boolean>
+paypal_suspend_subscription(subscription_id: string, reason: string): Promise<boolean>
+paypal_activate_subscription(subscription_id: string, reason: string): Promise<boolean>
+paypal_cancel_subscription(subscription_id: string, reason: string): Promise<boolean>
+paypal_revise_subscription(subscription_id: string, request: ReviseSubscriptionRequest): Promise<{approval_url: string; plan_id: string} | null>
+paypal_capture_subscription_payment(subscription_id: string, note: string, amount: Money): Promise<{success: boolean; transaction_id?: string; status?: string; details?: CaptureSubscriptionResponse} | null>
+paypal_get_subscription_transactions(subscription_id: string, start_time: string, end_time: string): Promise<SubscriptionTransactionsResponse | null>
+
+// billing plans (v1 api)
+paypal_create_billing_plan(request: CreateBillingPlanRequest): Promise<{plan_id: string; status: string} | null>
+paypal_list_billing_plans(product_id?: string, plan_ids?: string[], page_size?: number, page?: number, total_required?: boolean): Promise<ListBillingPlansResponse | null>
+paypal_get_billing_plan(plan_id: string): Promise<BillingPlanResponse | null>
+paypal_update_billing_plan(plan_id: string, patches: PatchRequest[]): Promise<boolean>
+paypal_activate_billing_plan(plan_id: string): Promise<boolean>
+paypal_deactivate_billing_plan(plan_id: string): Promise<boolean>
+paypal_update_plan_pricing(plan_id: string, request: UpdatePricingSchemesRequest): Promise<boolean>
+
+// catalog products (v1 api)
+paypal_create_catalog_product(request: CreateCatalogProductRequest): Promise<{product_id: string; type: string} | null>
+paypal_get_catalog_product(product_id: string): Promise<CatalogProductResponse | null>
+
+// webhooks (v1 api)
+paypal_create_webhook(url: string, event_types: string[]): Promise<{webhook_id: string; url: string} | null>
+paypal_list_webhooks(): Promise<WebhookResponse[] | null>
+paypal_get_webhook(webhook_id: string): Promise<WebhookResponse | null>
+paypal_update_webhook(webhook_id: string, patches: PatchRequest[]): Promise<boolean>
+paypal_delete_webhook(webhook_id: string): Promise<boolean>
+paypal_verify_webhook_signature(webhook_id: string, headers: Record<string, string>, body: string): Promise<boolean>
+paypal_list_webhook_event_types(): Promise<AvailableEventType[] | null>
+
+// invoicing (v2 api)
+paypal_generate_invoice_number(): Promise<string | null>
+paypal_create_draft_invoice(invoice: Invoice): Promise<Invoice | null>
+paypal_get_invoice(invoice_id: string): Promise<Invoice | null>
+paypal_list_invoices(page?: number, page_size?: number, total_required?: boolean): Promise<InvoiceSearchResponse | null>
+paypal_search_invoices(search: InvoiceSearchRequest): Promise<InvoiceSearchResponse | null>
+paypal_update_invoice(invoice_id: string, invoice: Invoice): Promise<Invoice | null>
+paypal_send_invoice(invoice_id: string, notification?: SendInvoiceRequest): Promise<{href?: string} | null>
+paypal_send_invoice_reminder(invoice_id: string, notification?: SendInvoiceRequest): Promise<boolean>
+paypal_cancel_invoice(invoice_id: string, cancel_request: CancelInvoiceRequest): Promise<boolean>
+paypal_delete_invoice(invoice_id: string): Promise<boolean>
+paypal_record_invoice_payment(invoice_id: string, payment: RecordPaymentRequest): Promise<string | null>
+paypal_delete_invoice_payment(invoice_id: string, transaction_id: string): Promise<boolean>
+paypal_record_invoice_refund(invoice_id: string, refund: RecordRefundRequest): Promise<string | null>
+paypal_delete_invoice_refund(invoice_id: string, transaction_id: string): Promise<boolean>
+paypal_generate_invoice_qr_code(invoice_id: string, width?: number, height?: number): Promise<string | null>
+```
+
+```ts
+import { paypal_create_order, paypal_capture_order } from 'paypal.ts';
+
+// create an order
+const order = await paypal_create_order({
+	items: [{
+		name: 'Premium Subscription',
+		quantity: '1',
+		unit_amount: { currency_code: 'USD', value: '29.99' }
+	}],
+	total_amount: '29.99',
+	currency_code: 'USD',
+	return_url: 'https://example.com/success',
+	cancel_url: 'https://example.com/cancel'
+});
+
+if (order) {
+	// redirect user to order.approval_url
+	// > https://www.paypal.com/checkoutnow?token=...
+}
+
+// after user approves, capture the payment
+const capture = await paypal_capture_order(order.order_id);
+if (capture?.success) {
+	// payment completed
+	// > { success: true, transaction_id: '...', status: 'COMPLETED' }
+}
+```
+
+```ts
+import { paypal_create_subscription, paypal_get_subscription } from 'paypal.ts';
+
+// create a subscription
+const subscription = await paypal_create_subscription({
+	plan_id: 'P-12345',
+	subscriber: {
+		name: { given_name: 'John', surname: 'Doe' },
+		email_address: 'john@example.com'
+	},
+	application_context: {
+		return_url: 'https://example.com/success',
+		cancel_url: 'https://example.com/cancel'
+	}
+});
+
+if (subscription) {
+	// redirect user to subscription.approval_url
+	// > { subscription_id: 'I-...', approval_url: 'https://...', status: 'APPROVAL_PENDING' }
+}
+
+// check subscription status
+const details = await paypal_get_subscription(subscription.subscription_id);
+// > { id: 'I-...', status: 'ACTIVE', billing_info: {...}, subscriber: {...} }
+```
+
+```ts
+import { paypal_create_webhook, paypal_list_webhooks, paypal_verify_webhook_signature, paypal_list_webhook_event_types, paypal_delete_webhook } from 'paypal.ts';
+
+// list available event types
+const event_types = await paypal_list_webhook_event_types();
+// > [{ name: 'PAYMENT.SALE.COMPLETED', description: '...' }, ...]
+
+// create a webhook
+const webhook = await paypal_create_webhook('https://example.com/webhook', [
+	'PAYMENT.SALE.COMPLETED',
+	'PAYMENT.SALE.REFUNDED',
+	'BILLING.SUBSCRIPTION.CREATED',
+	'BILLING.SUBSCRIPTION.CANCELLED'
+]);
+// > { webhook_id: '1WB...', url: 'https://example.com/webhook' }
+
+// list all webhooks
+const webhooks = await paypal_list_webhooks();
+// > [{ id: '1WB...', url: 'https://...', event_types: [...] }]
+
+// verify webhook signature (in your webhook handler)
+app.post('/webhook', async (req) => {
+	const is_valid = await paypal_verify_webhook_signature(
+		'1WB...',
+		req.headers,
+		await req.text()
+	);
+
+	if (is_valid) {
+		// process webhook event
+		const event = await req.json();
+		// > { event_type: 'PAYMENT.SALE.COMPLETED', resource: {...} }
+	}
+});
+
+// delete webhook
+await paypal_delete_webhook(webhook.webhook_id);
+```
+
+```ts
+import { paypal_generate_invoice_number, paypal_create_draft_invoice, paypal_send_invoice, paypal_record_invoice_payment, paypal_generate_invoice_qr_code } from 'paypal.ts';
+
+// generate next invoice number
+const invoice_number = await paypal_generate_invoice_number();
+// > '0001'
+
+// create a draft invoice
+const invoice = await paypal_create_draft_invoice({
+	detail: {
+		invoice_number: invoice_number,
+		invoice_date: '2025-11-12',
+		currency_code: 'USD',
+		payment_term: {
+			term_type: 'NET_30'
+		}
+	},
+	invoicer: {
+		business_name: 'My Business',
+		email_address: 'business@example.com'
+	},
+	primary_recipients: [{
+		business_name: 'Client Company',
+		email_address: 'client@example.com'
+	}],
+	items: [
+		{
+			name: 'Web Development Services',
+			quantity: '10',
+			unit_amount: { currency_code: 'USD', value: '100.00' },
+			unit_of_measure: 'HOURS'
+		}
+	]
+});
+// > { id: 'INV2-...', status: 'DRAFT', amount: { value: '1000.00' }, ... }
+
+// send the invoice
+await paypal_send_invoice(invoice.id, {
+	subject: 'Invoice for services',
+	note: 'Thank you for your business!'
+});
+
+// generate QR code for payment
+const qr_code = await paypal_generate_invoice_qr_code(invoice.id, 200, 200);
+// > 'iVBORw0KGgoAAAANS...' (base64 PNG image)
+
+// record a payment
+const payment_id = await paypal_record_invoice_payment(invoice.id, {
+	method: 'CASH',
+	payment_date: '2025-11-12',
+	amount: { currency_code: 'USD', value: '500.00' },
+	note: 'Partial payment received'
+});
+// > 'EXTR-...'
+
+// search invoices
+const results = await paypal_search_invoices({
+	status: ['SENT', 'PARTIALLY_PAID'],
+	invoice_date_range: {
+		start: '2025-01-01',
+		end: '2025-12-31'
+	}
+});
+// > { items: [{ id: 'INV2-...', status: 'SENT', ... }], total_items: 5 }
 ```
 
 ## Legal
