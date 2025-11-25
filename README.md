@@ -80,6 +80,7 @@ type UploadOptions = {
 	queue_size?: number;
 	content_type?: string;
 	filename?: string;
+	object_id?: string;
 };
 
 // standard API
@@ -93,7 +94,7 @@ ObjectBucket.list(offset?: number, page_size?: number): Promise<ListResult | nul
 
 // advanced
 ObjectBucket.action(action: string, params = {}): Promise<Response>;
-ObjectBucket.provision(filename: string, content_type: string, size: number): Promise<ObjectID|null>;
+ObjectBucket.provision(filename: string, content_type: string, size: number, object_id?: string): Promise<ObjectID|null>;
 ObjectBucket.finalize(object_id: string, checksum?: string): Promise<boolean>;
 ```
 
@@ -106,6 +107,12 @@ const bucket = obj_rds.bucket('my_bucket', 'my_bucket_secret');
 const file = Bun.file('./duck_picture.jpg');
 const obj_id = await bucket.upload(file);
 // > 13a10c56-5a28-4a47-8ca0-7070fc1233ba
+
+// upload with custom object ID (alphanumeric, underscore, hyphen; max 128 chars)
+const custom_id = 'my-custom-object-id_123';
+const obj_id_custom = await bucket.upload(file, { object_id: custom_id });
+// > my-custom-object-id_123
+// returns null with 409 status if object_id already exists in bucket
 
 // download file
 const res = await bucket.download(obj_id);

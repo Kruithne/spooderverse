@@ -24,6 +24,7 @@ type UploadOptions = {
 	queue_size?: number;
 	content_type?: string;
 	filename?: string;
+	object_id?: string;
 };
 
 type BucketStats = {
@@ -110,13 +111,20 @@ export function bucket(bucket_id: string, bucket_secret: string) {
 
 		/**
 		 * Provision an object in a bucket and returns the assigned object ID.
-		 * 
+		 *
+		 * If object_id is provided, the CDN will use that ID instead of generating one.
+		 * Returns 409 status if the provided object_id already exists in this bucket.
+		 *
 		 * Provisioned object is subject to CDN expiry rules if not finalized.
-		 * 
+		 *
 		 * Returns NULL and raises a caution in the event of failure.
 		 */
-		provision: async function(filename: string, content_type: string, size: number): Promise<ObjectID|null> {
-			const res = await this.action('provision', { filename, content_type, size });
+		provision: async function(filename: string, content_type: string, size: number, object_id?: string): Promise<ObjectID|null> {
+			const params: Record<string, any> = { filename, content_type, size };
+			if (object_id !== undefined)
+				params.object_id = object_id;
+
+			const res = await this.action('provision', params);
 
 			if (res.ok) {
 				const json = await res.json();
@@ -178,7 +186,7 @@ export function bucket(bucket_id: string, bucket_secret: string) {
 		 */
 		presign: function (object_id: string, expires = PRESIGN_EXPIRY_DEFAULT, action = 'access'): string {
 			const header = { typ: 'JWT', alg: HMAC_ALG };
-			const payload = { object_id, action, expires: Date.now() + expires };
+			const payload = { bucket_id, object_id, action, expires: Date.now() + expires };
 
 			const encoded_header = Buffer.from(JSON.stringify(header)).toString('base64url');
 			const encoded_payload = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -204,7 +212,7 @@ export function bucket(bucket_id: string, bucket_secret: string) {
 			// providing an empty string to the API will use the object_id as the filename.
 			const filename = is_bun_file(file) && file.name ? path.basename(file.name) : (options?.filename ?? '');
 			const content_type = options?.content_type ?? file.type;
-			const object_id = await this.provision(filename, content_type, file.size);
+			const object_id = await this.provision(filename, content_type, file.size, options?.object_id);
 
 			if (object_id === null)
 				return null;
@@ -312,11 +320,11 @@ export function bucket(bucket_id: string, bucket_secret: string) {
 
 		/**
 		 * Returns the public URL for a file.
-		 * 
+		 *
 		 * Use .presign() for a pre-signed URL to access private buckets.
 		 */
 		url: function (object_id: string): string {
-			return `${CDN_URL}/data/${object_id}`;
+			return `${CDN_URL}/data/${bucket_id}/${object_id}`;
 		}
 	}
 }
