@@ -269,6 +269,71 @@ reset_user_password(user_email_or_id: string|number): Promise<PasswordResetRespo
 apply_password_reset(token: string, new_password: string): Promise<PasswordResetResponse>
 ```
 
+### OAuth Extension
+
+The `Users` module includes OAuth support for third-party authentication (Google, Microsoft, etc). OAuth accounts are seamlessly integrated with the existing user system.
+
+> [!IMPORTANT]
+> OAuth providers must be configured in the `oauth_providers` database table. The `oauth_schema.sql` file includes Google and Microsoft entries with empty credentials that need to be filled in.
+
+```ts
+// provider management
+get_oauth_provider(provider_name: string): Promise<OAuthProvider | null>
+get_oauth_provider_by_id(provider_id: number): Promise<OAuthProvider | null>
+oauth_get_providers(): Promise<{ providers: { id: number, provider_name: string }[] }>
+
+// oauth flow
+oauth_initiate_login(provider_name: string, redirect_uri: string): Promise<{ auth_url?: string, error?: string }>
+oauth_callback(req: Request, code: string, state: string): Promise<Response | { error: string }>
+
+// state token management (csrf protection)
+generate_state_token(provider_id: number, redirect_uri: string): Promise<string>
+validate_state_token(state: string): Promise<OAuthStateToken | null>
+cleanup_expired_state_tokens(): Promise<void>
+
+// account linking
+find_oauth_account(provider_id: number, provider_user_id: string): Promise<OAuthAccount | null>
+create_oauth_account(user_id: number, provider_id: number, provider_user_id: string): Promise<void>
+is_oauth_account(user_id: number): Promise<boolean>
+
+// advanced
+build_authorization_url(provider: OAuthProvider, state: string, redirect_uri: string, scopes: string[]): string
+exchange_code_for_token(provider: OAuthProvider, code: string, redirect_uri: string): Promise<{ access_token: string; id_token?: string } | null>
+get_oauth_user_info(provider: OAuthProvider, access_token: string, id_token?: string): Promise<{ provider_user_id: string; email: string; given_name?: string; family_name?: string } | null>
+```
+
+```ts
+import { oauth_initiate_login, oauth_callback } from 'oauth.ts';
+
+// initiate oauth login
+app.get('/login/google', async (req) => {
+	const result = await oauth_initiate_login('google', 'https://example.com/auth/callback');
+
+	if (result.auth_url)
+		return Response.redirect(result.auth_url);
+
+	return Response.json({ error: result.error });
+});
+
+// handle oauth callback
+app.get('/auth/callback', async (req) => {
+	const url = new URL(req.url);
+	const code = url.searchParams.get('code');
+	const state = url.searchParams.get('state');
+
+	if (!code || !state)
+		return Response.json({ error: 'missing_parameters' });
+
+	const result = await oauth_callback(req, code, state);
+
+	// oauth_callback returns Response on success, { error } on failure
+	if (result instanceof Response)
+		return result; // session started, cookies set
+
+	return Response.json({ error: result.error });
+});
+```
+
 <a id="paypal"></a>
 ## Module :: PayPal
 

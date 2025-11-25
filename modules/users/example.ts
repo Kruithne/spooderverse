@@ -1,6 +1,7 @@
 import { SQL } from 'bun';
 import * as spooder from 'spooder';
 import * as users from './users';
+import * as oauth from './oauth';
 
 const db = new SQL('mysql://user:pw@localhost:3306/db_name');
 const server = spooder.http_serve(6010);
@@ -275,5 +276,30 @@ server.json('user_verify_resend', server.throttle(1000, async (req, url, json) =
 		return { error: 'Unable to re-send verification code. Try again later.' };
 
 	return { success: true };
+}));
+
+// oauth endpoints
+server.json('oauth_get_providers', async (req, url, json) => {
+	return await oauth.oauth_get_providers();
+});
+
+server.json('oauth_initiate_login', server.throttle(1000, async (req, url, json) => {
+	if (typeof json.provider !== 'string')
+		return { error: 'missing provider' };
+
+	if (typeof json.redirect_uri !== 'string')
+		return { error: 'missing redirect_uri' };
+
+	return await oauth.oauth_initiate_login(json.provider, json.redirect_uri);
+}));
+
+server.json('oauth_callback', server.throttle(1000, async (req, url, json) => {
+	if (typeof json.code !== 'string')
+		return { error: 'missing code' };
+
+	if (typeof json.state !== 'string')
+		return { error: 'missing state' };
+
+	return await oauth.oauth_callback(req, json.code, json.state);
 }));
 // endregion

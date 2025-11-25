@@ -18,6 +18,7 @@ export enum UserAccountFlags { // 32-bit
 	RequiresVerification = 1 << 1,
 	ForcePasswordReset = 1 << 2,
 	AllPermissions = 1 << 3,
+	OAuthAccount = 1 << 4,
 };
 
 export enum UserPermission {
@@ -177,9 +178,13 @@ export async function get_user_presence(user_id: number) {
 export async function verify_login(email: string, password: string) {
 	const [row] = await db`SELECT id, password, flags FROM user_accounts WHERE email = ${email} LIMIT 1`;
 	if (row) {
+		// reject password login for oauth accounts
+		if (flag_is_set(row.flags, UserAccountFlags.OAuthAccount))
+			return [VerifyLoginResponse.InvalidPassword, null];
+
 		if (flag_is_set(row.flags, UserAccountFlags.ForcePasswordReset))
 			return [VerifyLoginResponse.RequiresPasswordReset, row.id];
-		
+
 		if (!(await Bun.password.verify(password, row.password)))
 			return [VerifyLoginResponse.InvalidPassword, null];
 
