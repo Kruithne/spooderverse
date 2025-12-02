@@ -175,6 +175,9 @@ type Mailer = {
 };
 ```
 
+> [!NOTE]
+> The connection URI format is `user:pass@host:port`. If your username or password contains special characters (such as `@`, `:`, or `$`), they must be URL-encoded. For example, a username of `user@example.com` should be encoded as `user%40example.com`.
+
 ```ts
 import { smtp_send, smtp_create_mailer } from 'smtp.ts';
 

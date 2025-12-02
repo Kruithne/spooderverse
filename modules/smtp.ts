@@ -35,8 +35,8 @@ function parse_connection_string(uri: string): SMTPConfig {
 		throw new Error('invalid connection string format, expected: user:pass@host:port');
 
 	return {
-		user: match[1],
-		pass: match[2],
+		user: decodeURIComponent(match[1]),
+		pass: decodeURIComponent(match[2]),
 		host: match[3],
 		port: parseInt(match[4])
 	};
