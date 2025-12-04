@@ -27,6 +27,7 @@ The intended way for this project to be used is much simpler: take the module yo
 - [modules/mail.ts](#mail) - Mail utilities.
 - [modules/users.ts](#users) - User Management System
 - [modules/paypal.ts](#paypal) - PayPal API for orders and subscriptions.
+- [modules/discord.ts](#discord) - Discord bot gateway and REST API.
 
 <a id="pop3"></a>
 ## Module :: POP3
@@ -569,6 +570,104 @@ const results = await paypal_search_invoices({
 	}
 });
 // > { items: [{ id: 'INV2-...', status: 'SENT', ... }], total_items: 5 }
+```
+
+<a id="discord"></a>
+## Module :: Discord
+
+Discord bot gateway client with WebSocket connection management, automatic reconnection, and REST API support.
+
+> [!IMPORTANT]
+> Configure the environment variable DISCORD_TOKEN with your bot token.
+
+```ts
+// connect
+discord_connect(intents?: number): Promise<DiscordClient>
+
+// client
+DiscordClient.on(event: 'ready' | 'message' | 'interaction', handler): void
+DiscordClient.send_message(channel_id: string, message: string | MessagePayload, attachments?: Attachment[]): Promise<unknown>
+DiscordClient.get_channel_message(channel_id: string, message_id: string): Promise<unknown>
+DiscordClient.delete_channel_message(channel_id: string, message_id: string): Promise<unknown>
+DiscordClient.get_reaction(channel_id: string, message_id: string, emoji: { name: string; id?: string }): Promise<unknown>
+DiscordClient.set_presence(name: string, type: number): void
+
+// message class
+DiscordMessage.content: string
+DiscordMessage.channel_id: string
+DiscordMessage.author_id: string
+DiscordMessage.delete(): Promise<void>
+DiscordMessage.respond(message: string, attachments?: Attachment[]): Promise<void>
+
+// interaction class
+DiscordInteraction.name: string
+DiscordInteraction.user_id: string
+DiscordInteraction.channel_id: string
+DiscordInteraction.guild_id: string
+DiscordInteraction.custom_id: string | null
+DiscordInteraction.values: string[]
+DiscordInteraction.is_command: boolean
+DiscordInteraction.is_component: boolean
+DiscordInteraction.get_option(name: string): unknown | null
+DiscordInteraction.respond(message: string | MessagePayload, ephemeral?: boolean): Promise<void>
+DiscordInteraction.update(message: string | MessagePayload): Promise<void>
+DiscordInteraction.defer(ephemeral?: boolean): Promise<void>
+
+// component builders
+create_action_row(...components: Component[]): ActionRowComponent
+create_select_menu(options: SelectMenuOptions): SelectMenuComponent
+create_button(options: ButtonOptions): ButtonComponent
+```
+
+```ts
+import { discord_connect, INTENTS, create_action_row, create_button, BUTTON_STYLE } from 'discord.ts';
+
+const bot = await discord_connect(INTENTS.GUILDS | INTENTS.GUILD_MESSAGES | INTENTS.MESSAGE_CONTENT);
+
+bot.on('ready', () => {
+	console.log('bot connected');
+	bot.set_presence('with spooderverse', 0);
+});
+
+bot.on('message', async (msg) => {
+	if (msg.content === '!ping')
+		await msg.respond('pong!');
+});
+
+bot.on('interaction', async (interaction) => {
+	if (interaction.is_command && interaction.name === 'hello')
+		await interaction.respond('Hello!', true);
+});
+```
+
+```ts
+// send embed with components
+await bot.send_message(channel_id, {
+	embeds: [{
+		title: 'Confirmation',
+		description: 'Are you sure?',
+		color: 0x5865F2
+	}],
+	components: [
+		create_action_row(
+			create_button({ custom_id: 'confirm', label: 'Yes', style: BUTTON_STYLE.SUCCESS }),
+			create_button({ custom_id: 'cancel', label: 'No', style: BUTTON_STYLE.DANGER })
+		)
+	]
+});
+```
+
+```ts
+// handle button interaction
+bot.on('interaction', async (interaction) => {
+	if (!interaction.is_component)
+		return;
+
+	if (interaction.custom_id === 'confirm')
+		await interaction.update({ content: 'Confirmed!', components: [] });
+	else if (interaction.custom_id === 'cancel')
+		await interaction.update({ content: 'Cancelled.', components: [] });
+});
 ```
 
 ## Legal
