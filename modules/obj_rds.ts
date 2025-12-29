@@ -6,7 +6,6 @@
 
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { caution } from 'spooder';
 
 const CDN_URL = 'https://cdn.rubberducksolutions.dev';
 const PRESIGN_EXPIRY_DEFAULT = 24 * 60 * 60 * 1000; // 24 hours
@@ -111,15 +110,8 @@ export function bucket(bucket_id: string, bucket_secret: string) {
 				body: payload_str
 			});
 
-			if (!res.ok) {
-				caution('obj_rds: bucket action failed', {
-					status_text: await res.text(),
-					status_code: res.status,
-					bucket_id,
-					action,
-					params
-				});
-			}
+			if (!res.ok)
+				throw new Error(`${res.status} ${await res.text()}`);
 
 			return res;
 		},
@@ -128,30 +120,28 @@ export function bucket(bucket_id: string, bucket_secret: string) {
 		 * Provision an object in a bucket and returns the assigned object ID.
 		 *
 		 * If object_id is provided, the CDN will use that ID instead of generating one.
-		 * Returns 409 status if the provided object_id already exists in this bucket.
 		 *
 		 * Provisioned object is subject to CDN expiry rules if not finalized.
 		 *
-		 * Returns NULL and raises a caution in the event of failure.
+		 * @throws Error on failure (e.g. "409 Object ID Already Exists")
 		 */
-		provision: async function(filename: string, content_type: string, size: number, object_id?: string): Promise<ObjectID|null> {
+		provision: async function(filename: string, content_type: string, size: number, object_id?: string): Promise<ObjectID> {
 			const params: Record<string, any> = { filename, content_type, size };
 			if (object_id !== undefined)
 				params.object_id = object_id;
 
 			const res = await this.action('provision', params);
-
-			if (res.ok) {
-				const json = await res.json();
-				return json.object_id;
-			}
-
-			return null;
+			const json = await res.json();
+			return json.object_id;
 		},
 
-		finalize: async function (object_id: string, checksum?: string): Promise<boolean> {
-			const res = await this.action('finalize', { object_id, checksum });
-			return res.ok;
+		/**
+		 * Finalize an object after upload completes.
+		 *
+		 * @throws Error on failure (e.g. "422 Checksum Mismatch")
+		 */
+		finalize: async function (object_id: string, checksum?: string): Promise<void> {
+			await this.action('finalize', { object_id, checksum });
 		},
 
 		/**
@@ -160,12 +150,12 @@ export function bucket(bucket_id: string, bucket_secret: string) {
 		 * If called without object_id, returns bucket stats { size, files }.
 		 * If called with object_id, returns object metadata { filename, size, content_type, created }.
 		 *
-		 * Returns NULL in the event of failure.
+		 * @throws Error on failure (e.g. "404 Object Not Found")
 		 */
-		stat: async function (object_id?: string): Promise<BucketStats | ObjectStats | null> {
+		stat: async function (object_id?: string): Promise<BucketStats | ObjectStats> {
 			const params = object_id ? { object_id } : {};
 			const res = await this.action('stat', params);
-			return res.ok ? await res.json() : null;
+			return await res.json();
 		},
 
 		/**
@@ -173,11 +163,10 @@ export function bucket(bucket_id: string, bucket_secret: string) {
 		 *
 		 * Only finalized objects can be deleted.
 		 *
-		 * Returns true if successful, false otherwise.
+		 * @throws Error on failure (e.g. "404 Object Not Found")
 		 */
-		delete: async function (object_id: string): Promise<boolean> {
-			const res = await this.action('delete', { object_id });
-			return res.ok;
+		delete: async function (object_id: string): Promise<void> {
+			await this.action('delete', { object_id });
 		},
 
 		/**
@@ -185,15 +174,15 @@ export function bucket(bucket_id: string, bucket_secret: string) {
 		 *
 		 * Returns paginated list of finalized objects ordered by creation date (oldest first).
 		 *
-		 * Returns NULL in the event of failure.
+		 * @throws Error on failure
 		 */
-		list: async function (offset = 0, page_size?: number): Promise<ListResult | null> {
+		list: async function (offset = 0, page_size?: number): Promise<ListResult> {
 			const params: any = { offset };
 			if (page_size !== undefined)
 				params.page_size = page_size;
 
 			const res = await this.action('list', params);
-			return res.ok ? await res.json() : null;
+			return await res.json();
 		},
 
 		/**
@@ -213,7 +202,12 @@ export function bucket(bucket_id: string, bucket_secret: string) {
 			return `${this.url(object_id)}?token=${message}.${hmac.digest('base64url')}`;
 		},
 
-		upload: async function (input: UploadInput, options?: UploadOptions) {
+		/**
+		 * Upload a file to the bucket.
+		 *
+		 * @throws Error on failure
+		 */
+		upload: async function (input: UploadInput, options?: UploadOptions): Promise<ObjectID> {
 			let file: Blob;
 			if (is_bun_file(input)) {
 				file = input;
@@ -228,9 +222,6 @@ export function bucket(bucket_id: string, bucket_secret: string) {
 			const filename = is_bun_file(file) && file.name ? path.basename(file.name) : (options?.filename ?? '');
 			const content_type = options?.content_type ?? file.type;
 			const object_id = await this.provision(filename, content_type, file.size, options?.object_id);
-
-			if (object_id === null)
-				return null;
 
 			const upload_url = this.presign(object_id, undefined, 'upload');
 
@@ -305,26 +296,13 @@ export function bucket(bucket_id: string, bucket_secret: string) {
 						abort_controller.abort();
 						await Promise.allSettled(active_promises);
 
-						caution('obj_rds: upload failure', {
-							bucket_id,
-							content_type: file.type,
-							filename,
-							total_size: file.size,
-							status: last_failed_status,
-							error_message: last_failed_message
-						});
-
-						return null;
+						throw new Error(`${last_failed_status} ${last_failed_message}`);
 					}
 				}
 			}
 
 			const checksum = await checksum_promise;
-			const finalized = await this.finalize(object_id, checksum);
-			if (!finalized) {
-				caution('obj_rds: checksum integrity failure', { object_id, checksum });
-				return null;
-			}
+			await this.finalize(object_id, checksum);
 
 			return object_id;
 		},
@@ -366,15 +344,8 @@ export function admin(user_name: string, user_secret: string) {
 				body: payload_str
 			});
 
-			if (!res.ok) {
-				caution('obj_rds: admin action failed', {
-					status_text: await res.text(),
-					status_code: res.status,
-					user_name,
-					action,
-					params
-				});
-			}
+			if (!res.ok)
+				throw new Error(`${res.status} ${await res.text()}`);
 
 			return res;
 		},
@@ -382,36 +353,36 @@ export function admin(user_name: string, user_secret: string) {
 		/**
 		 * Create a new bucket.
 		 *
-		 * Returns the bucket_id and generated secret on success, or NULL on failure.
-		 * Returns 409 status if the bucket_id already exists.
-		 *
 		 * @param bucket_id - Unique identifier for the bucket (alphanumeric, underscore, hyphen; max 64 chars)
 		 * @param is_public - If true, objects can be accessed without a signed URL (default: false)
+		 * @throws Error on failure (e.g. "409 Bucket ID Already Exists")
 		 */
-		create_bucket: async function(bucket_id: string, is_public = false): Promise<CreateBucketResult | null> {
+		create_bucket: async function(bucket_id: string, is_public = false): Promise<CreateBucketResult> {
 			const res = await this.action('create_bucket', { bucket_id, is_public });
-			return res.ok ? await res.json() : null;
+			return await res.json();
 		},
 
 		/**
 		 * Delete a bucket and all its contents.
 		 *
 		 * Only the user who created the bucket can delete it.
-		 * Returns true on success, false otherwise.
+		 *
+		 * @throws Error on failure (e.g. "403 Forbidden", "404 Bucket Not Found")
 		 */
-		delete_bucket: async function(bucket_id: string): Promise<boolean> {
-			const res = await this.action('delete_bucket', { bucket_id });
-			return res.ok;
+		delete_bucket: async function(bucket_id: string): Promise<void> {
+			await this.action('delete_bucket', { bucket_id });
 		},
 
 		/**
 		 * List all buckets owned by this user.
 		 *
 		 * Returns bucket details including secrets.
+		 *
+		 * @throws Error on failure
 		 */
-		list_buckets: async function(): Promise<ListBucketsResult | null> {
+		list_buckets: async function(): Promise<ListBucketsResult> {
 			const res = await this.action('list_buckets');
-			return res.ok ? await res.json() : null;
+			return await res.json();
 		}
 	}
 }

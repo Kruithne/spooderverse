@@ -85,24 +85,24 @@ type UploadOptions = {
 	object_id?: string;
 };
 
-// bucket API
-ObjectBucket.upload(input: UploadInput, options?: UploadOptions): Promise<ObjectID|null>;
+// bucket API (all methods throw Error on failure, e.g. "409 Object ID Already Exists")
+ObjectBucket.upload(input: UploadInput, options?: UploadOptions): Promise<ObjectID>;
 ObjectBucket.url(object_id: string): string;
 ObjectBucket.download(object_id: string): Promise<Response>;
 ObjectBucket.presign(object_id: string, expires?: number, action?: string): string;
-ObjectBucket.stat(object_id?: string): Promise<BucketStats | ObjectStats | null>;
-ObjectBucket.delete(object_id: string): Promise<boolean>;
-ObjectBucket.list(offset?: number, page_size?: number): Promise<ListResult | null>;
+ObjectBucket.stat(object_id?: string): Promise<BucketStats | ObjectStats>;
+ObjectBucket.delete(object_id: string): Promise<void>;
+ObjectBucket.list(offset?: number, page_size?: number): Promise<ListResult>;
 
 // bucket API (advanced)
 ObjectBucket.action(action: string, params = {}): Promise<Response>;
-ObjectBucket.provision(filename: string, content_type: string, size: number, object_id?: string): Promise<ObjectID|null>;
-ObjectBucket.finalize(object_id: string, checksum?: string): Promise<boolean>;
+ObjectBucket.provision(filename: string, content_type: string, size: number, object_id?: string): Promise<ObjectID>;
+ObjectBucket.finalize(object_id: string, checksum?: string): Promise<void>;
 
-// admin API
-Admin.create_bucket(bucket_id: string, is_public?: boolean): Promise<{ bucket_id: string, secret: string } | null>;
-Admin.delete_bucket(bucket_id: string): Promise<boolean>;
-Admin.list_buckets(): Promise<ListBucketsResult | null>;
+// admin API (all methods throw Error on failure)
+Admin.create_bucket(bucket_id: string, is_public?: boolean): Promise<{ bucket_id: string, secret: string }>;
+Admin.delete_bucket(bucket_id: string): Promise<void>;
+Admin.list_buckets(): Promise<ListBucketsResult>;
 Admin.action(action: string, params = {}): Promise<Response>;
 ```
 
@@ -120,7 +120,7 @@ const obj_id = await bucket.upload(file);
 const custom_id = 'my-custom-object-id_123';
 const obj_id_custom = await bucket.upload(file, { object_id: custom_id });
 // > my-custom-object-id_123
-// returns null with 409 status if object_id already exists in bucket
+// throws "409 Object ID Already Exists" if object_id already exists in bucket
 
 // download file
 const res = await bucket.download(obj_id);
@@ -157,7 +157,7 @@ const adm = obj_rds.admin('my_user', 'my_user_secret');
 // create a new bucket (private by default)
 const result = await adm.create_bucket('my-new-bucket');
 // > { bucket_id: 'my-new-bucket', secret: '7af4c4b7d9515230...' }
-// returns null with 409 status if bucket_id already exists
+// throws "409 Bucket ID Already Exists" if bucket_id already exists
 
 // create a public bucket (objects accessible without signed URLs)
 const public_bucket = await adm.create_bucket('my-public-bucket', true);
@@ -168,7 +168,6 @@ await bucket.upload(Bun.file('./image.png'));
 
 // delete bucket and all its contents (only creator can delete)
 await adm.delete_bucket('my-new-bucket');
-// > true
 
 // list all buckets owned by this user
 const buckets = await adm.list_buckets();
