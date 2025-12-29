@@ -49,6 +49,21 @@ type ListResult = {
 	}>;
 };
 
+type CreateBucketResult = {
+	bucket_id: string;
+	secret: string;
+};
+
+type ListBucketsResult = {
+	buckets: Array<{
+		bucket_id: string;
+		secret: string;
+		is_public: number;
+		total_size: number;
+		total_files: number;
+	}>;
+};
+
 async function checksum_file(file: Blob): Promise<string> {
 	const stream = file.stream();
 	const hasher = new Bun.CryptoHasher('sha256');
@@ -325,6 +340,78 @@ export function bucket(bucket_id: string, bucket_secret: string) {
 		 */
 		url: function (object_id: string): string {
 			return `${CDN_URL}/data/${bucket_id}/${object_id}`;
+		}
+	}
+}
+
+export function admin(user_name: string, user_secret: string) {
+	return {
+		action: async function(action: string, params = {}): Promise<Response> {
+			const payload = {
+				action,
+				created: Date.now(),
+				...params
+			};
+
+			const payload_str = JSON.stringify(payload);
+			const hmac = crypto.createHmac(HMAC_ALG, user_secret);
+			hmac.update(payload_str);
+
+			const res = await fetch(`${CDN_URL}/admin/${user_name}`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-Signature': `${HMAC_ALG}=${hmac.digest('hex')}`
+				},
+				body: payload_str
+			});
+
+			if (!res.ok) {
+				caution('obj_rds: admin action failed', {
+					status_text: await res.text(),
+					status_code: res.status,
+					user_name,
+					action,
+					params
+				});
+			}
+
+			return res;
+		},
+
+		/**
+		 * Create a new bucket.
+		 *
+		 * Returns the bucket_id and generated secret on success, or NULL on failure.
+		 * Returns 409 status if the bucket_id already exists.
+		 *
+		 * @param bucket_id - Unique identifier for the bucket (alphanumeric, underscore, hyphen; max 64 chars)
+		 * @param is_public - If true, objects can be accessed without a signed URL (default: false)
+		 */
+		create_bucket: async function(bucket_id: string, is_public = false): Promise<CreateBucketResult | null> {
+			const res = await this.action('create_bucket', { bucket_id, is_public });
+			return res.ok ? await res.json() : null;
+		},
+
+		/**
+		 * Delete a bucket and all its contents.
+		 *
+		 * Only the user who created the bucket can delete it.
+		 * Returns true on success, false otherwise.
+		 */
+		delete_bucket: async function(bucket_id: string): Promise<boolean> {
+			const res = await this.action('delete_bucket', { bucket_id });
+			return res.ok;
+		},
+
+		/**
+		 * List all buckets owned by this user.
+		 *
+		 * Returns bucket details including secrets.
+		 */
+		list_buckets: async function(): Promise<ListBucketsResult | null> {
+			const res = await this.action('list_buckets');
+			return res.ok ? await res.json() : null;
 		}
 	}
 }

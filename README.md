@@ -72,6 +72,7 @@ try {
 ```ts
 set_hmac_algorithm(alg: string);
 bucket(bucket_id: string, bucket_secret: string): <ObjectBucket>;
+admin(user_name: string, user_secret: string): <Admin>;
 
 type UploadInput = BunFile | string | Buffer | ArrayBuffer | Uint8Array;
 
@@ -84,7 +85,7 @@ type UploadOptions = {
 	object_id?: string;
 };
 
-// standard API
+// bucket API
 ObjectBucket.upload(input: UploadInput, options?: UploadOptions): Promise<ObjectID|null>;
 ObjectBucket.url(object_id: string): string;
 ObjectBucket.download(object_id: string): Promise<Response>;
@@ -93,10 +94,16 @@ ObjectBucket.stat(object_id?: string): Promise<BucketStats | ObjectStats | null>
 ObjectBucket.delete(object_id: string): Promise<boolean>;
 ObjectBucket.list(offset?: number, page_size?: number): Promise<ListResult | null>;
 
-// advanced
+// bucket API (advanced)
 ObjectBucket.action(action: string, params = {}): Promise<Response>;
 ObjectBucket.provision(filename: string, content_type: string, size: number, object_id?: string): Promise<ObjectID|null>;
 ObjectBucket.finalize(object_id: string, checksum?: string): Promise<boolean>;
+
+// admin API
+Admin.create_bucket(bucket_id: string, is_public?: boolean): Promise<{ bucket_id: string, secret: string } | null>;
+Admin.delete_bucket(bucket_id: string): Promise<boolean>;
+Admin.list_buckets(): Promise<ListBucketsResult | null>;
+Admin.action(action: string, params = {}): Promise<Response>;
 ```
 
 ```ts
@@ -140,6 +147,32 @@ await bucket.delete(obj_id);
 // list objects (paginated)
 const list = await bucket.list(0, 50);
 // > { objects: [{ object_id: "...", filename: "...", size: X, content_type: "...", created: X }, ...] }
+```
+
+```ts
+import * as obj_rds from 'obj_rds.ts';
+
+const adm = obj_rds.admin('my_user', 'my_user_secret');
+
+// create a new bucket (private by default)
+const result = await adm.create_bucket('my-new-bucket');
+// > { bucket_id: 'my-new-bucket', secret: '7af4c4b7d9515230...' }
+// returns null with 409 status if bucket_id already exists
+
+// create a public bucket (objects accessible without signed URLs)
+const public_bucket = await adm.create_bucket('my-public-bucket', true);
+
+// use the new bucket
+const bucket = obj_rds.bucket(result.bucket_id, result.secret);
+await bucket.upload(Bun.file('./image.png'));
+
+// delete bucket and all its contents (only creator can delete)
+await adm.delete_bucket('my-new-bucket');
+// > true
+
+// list all buckets owned by this user
+const buckets = await adm.list_buckets();
+// > { buckets: [{ bucket_id: "...", secret: "...", is_public: 0, total_size: 1024, total_files: 5 }, ...] }
 ```
 
 <a id="smtp"></a>
